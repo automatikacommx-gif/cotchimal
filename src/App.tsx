@@ -1,27 +1,34 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Sidebar, NavTab } from './components/Sidebar';
 import { MobileNav } from './components/MobileNav';
 import { Toast, ToastMessage } from './components/Toast';
-import { AuthModal } from './components/AuthModal';
-import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { OverviewDashboard } from './components/dashboard/OverviewDashboard';
-import { ClientList } from './components/clients/ClientList';
-import { ClientModal } from './components/clients/ClientModal';
-import { DeleteClientModal } from './components/clients/DeleteClientModal';
-import { QuoteWizard } from './components/quotes/QuoteWizard';
-import { QuoteTracker } from './components/quotes/QuoteTracker';
-import { QuoteDetailModal } from './components/quotes/QuoteDetailModal';
-import { SettingsHub } from './components/settings/SettingsHub';
-import { CompanyWizard } from './components/settings/onboarding/CompanyWizard';
-import { ImpositionCalculator } from './components/imposition/ImpositionCalculator';
 import { Client, Quote, QuoteStatus } from './types';
 import { clientService } from './services/clientService';
 import { quoteService } from './services/quoteService';
 import { isSupabaseConfigured, subscribeToTablesStatus } from './lib/supabase';
 import { Database, Copy, X } from 'lucide-react';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+
+// Lazy loading diferido de vistas pesadas y modales
+const QuoteWizard = lazy(() => import('./components/quotes/QuoteWizard').then(m => ({ default: m.QuoteWizard })));
+const SettingsHub = lazy(() => import('./components/settings/SettingsHub').then(m => ({ default: m.SettingsHub })));
+const ImpositionCalculator = lazy(() => import('./components/imposition/ImpositionCalculator').then(m => ({ default: m.ImpositionCalculator })));
+const ClientList = lazy(() => import('./components/clients/ClientList').then(m => ({ default: m.ClientList })));
+const QuoteTracker = lazy(() => import('./components/quotes/QuoteTracker').then(m => ({ default: m.QuoteTracker })));
+const QuoteDetailModal = lazy(() => import('./components/quotes/QuoteDetailModal').then(m => ({ default: m.QuoteDetailModal })));
+const ClientModal = lazy(() => import('./components/clients/ClientModal').then(m => ({ default: m.ClientModal })));
+const DeleteClientModal = lazy(() => import('./components/clients/DeleteClientModal').then(m => ({ default: m.DeleteClientModal })));
+const SupabaseConfigModal = lazy(() => import('./components/SupabaseConfigModal').then(m => ({ default: m.SupabaseConfigModal })));
+const AuthModal = lazy(() => import('./components/AuthModal').then(m => ({ default: m.AuthModal })));
+
+const TabLoadingFallback = () => (
+  <div className="w-full flex items-center justify-center py-20 text-slate-400 font-medium text-xs sm:text-sm animate-pulse">
+    Cargando módulo...
+  </div>
+);
 
 export function AppContent() {
   const [activeTab, setActiveTab] = useState<NavTab>('resumen');
@@ -230,88 +237,90 @@ export function AppContent() {
           </div>
         )}
 
-        {activeTab === 'resumen' && (
-          <OverviewDashboard
-            onNavigateToQuotes={handleQuickQuote}
-            onNavigateToClients={() => setActiveTab('clientes')}
-            onNavigateToConfig={() => {
-              setWizardInitialStep(1);
-              setWizardStep3SubStep(1);
-              setWizardNavTrigger((prev) => prev + 1);
-              setActiveTab('ajustes');
-            }}
-            onNavigateToImposition={() => setActiveTab('imposicion')}
-            onSelectQuote={(q) => setQuoteDetail(q)}
-          />
-        )}
+        <Suspense fallback={<TabLoadingFallback />}>
+          {activeTab === 'resumen' && (
+            <OverviewDashboard
+              onNavigateToQuotes={handleQuickQuote}
+              onNavigateToClients={() => setActiveTab('clientes')}
+              onNavigateToConfig={() => {
+                setWizardInitialStep(1);
+                setWizardStep3SubStep(1);
+                setWizardNavTrigger((prev) => prev + 1);
+                setActiveTab('ajustes');
+              }}
+              onNavigateToImposition={() => setActiveTab('imposicion')}
+              onSelectQuote={(q) => setQuoteDetail(q)}
+            />
+          )}
 
-        {activeTab === 'cotizar' && (
-          <QuoteWizard
-            clients={clients}
-            initialClient={quoteInitialClient}
-            onQuoteCreated={handleQuoteCreated}
-            onCancel={() => setActiveTab('resumen')}
-            onShowNotification={showNotification}
-            onOpenImposition={() => setActiveTab('imposicion')}
-            onConfigureMachines={() => {
-              setWizardInitialStep(3);
-              setWizardStep3SubStep(1);
-              setWizardNavTrigger((prev) => prev + 1);
-              setActiveTab('ajustes');
-            }}
-            onConfigureSubstrates={() => {
-              setWizardInitialStep(4);
-              setWizardStep3SubStep(1);
-              setWizardNavTrigger((prev) => prev + 1);
-              setActiveTab('ajustes');
-            }}
-            onConfigureClients={() => {
-              setActiveTab('clientes');
-            }}
-            onViewConfigSummary={() => {
-              setWizardInitialStep(6);
-              setWizardStep3SubStep(1);
-              setWizardNavTrigger((prev) => prev + 1);
-              setActiveTab('ajustes');
-            }}
-          />
-        )}
+          {activeTab === 'cotizar' && (
+            <QuoteWizard
+              clients={clients}
+              initialClient={quoteInitialClient}
+              onQuoteCreated={handleQuoteCreated}
+              onCancel={() => setActiveTab('resumen')}
+              onShowNotification={showNotification}
+              onOpenImposition={() => setActiveTab('imposicion')}
+              onConfigureMachines={() => {
+                setWizardInitialStep(3);
+                setWizardStep3SubStep(1);
+                setWizardNavTrigger((prev) => prev + 1);
+                setActiveTab('ajustes');
+              }}
+              onConfigureSubstrates={() => {
+                setWizardInitialStep(4);
+                setWizardStep3SubStep(1);
+                setWizardNavTrigger((prev) => prev + 1);
+                setActiveTab('ajustes');
+              }}
+              onConfigureClients={() => {
+                setActiveTab('clientes');
+              }}
+              onViewConfigSummary={() => {
+                setWizardInitialStep(6);
+                setWizardStep3SubStep(1);
+                setWizardNavTrigger((prev) => prev + 1);
+                setActiveTab('ajustes');
+              }}
+            />
+          )}
 
-        {activeTab === 'imposicion' && (
-          <ImpositionCalculator
-            onApplyToQuote={handleApplyImpositionToQuote}
-          />
-        )}
+          {activeTab === 'imposicion' && (
+            <ImpositionCalculator
+              onApplyToQuote={handleApplyImpositionToQuote}
+            />
+          )}
 
-        {activeTab === 'clientes' && (
-          <ClientList
-            onSelectClientForQuote={handleSelectClientForQuote}
-            onOpenCreateModal={handleOpenCreateClient}
-            onOpenEditModal={handleOpenEditClient}
-            onOpenDeleteModal={handleOpenDeleteClient}
-            onShowNotification={showNotification}
-            externalSearchQuery={searchQuery}
-          />
-        )}
+          {activeTab === 'clientes' && (
+            <ClientList
+              onSelectClientForQuote={handleSelectClientForQuote}
+              onOpenCreateModal={handleOpenCreateClient}
+              onOpenEditModal={handleOpenEditClient}
+              onOpenDeleteModal={handleOpenDeleteClient}
+              onShowNotification={showNotification}
+              externalSearchQuery={searchQuery}
+            />
+          )}
 
-        {activeTab === 'gestion' && (
-          <QuoteTracker
-            onSelectQuote={(q) => setQuoteDetail(q)}
-            onNewQuote={() => setActiveTab('cotizar')}
-          />
-        )}
+          {activeTab === 'gestion' && (
+            <QuoteTracker
+              onSelectQuote={(q) => setQuoteDetail(q)}
+              onNewQuote={() => setActiveTab('cotizar')}
+            />
+          )}
 
-        {activeTab === 'ajustes' && (
-          <SettingsHub
-            onGoToQuote={() => setActiveTab('cotizar')}
-            onGoToClients={() => setActiveTab('clientes')}
-            clientsCount={clients.length}
-            initialWizardStep={wizardInitialStep}
-            initialStep3SubStep={wizardStep3SubStep}
-            wizardNavTrigger={wizardNavTrigger}
-            onShowToast={(toast) => showNotification(toast.message, toast.type)}
-          />
-        )}
+          {activeTab === 'ajustes' && (
+            <SettingsHub
+              onGoToQuote={() => setActiveTab('cotizar')}
+              onGoToClients={() => setActiveTab('clientes')}
+              clientsCount={clients.length}
+              initialWizardStep={wizardInitialStep}
+              initialStep3SubStep={wizardStep3SubStep}
+              wizardNavTrigger={wizardNavTrigger}
+              onShowToast={(toast) => showNotification(toast.message, toast.type)}
+            />
+          )}
+        </Suspense>
       </main>
 
       {/* Persistent Mobile Bottom Navigation (64px) */}
@@ -322,46 +331,58 @@ export function AppContent() {
         }}
       />
 
-      {/* Modals */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onShowNotification={showNotification}
-      />
+      {/* Modals con carga diferida */}
+      <Suspense fallback={null}>
+        {isAuthModalOpen && (
+          <AuthModal
+            isOpen={isAuthModalOpen}
+            onClose={() => setIsAuthModalOpen(false)}
+            onShowNotification={showNotification}
+          />
+        )}
 
-      <SupabaseConfigModal
-        isOpen={isConfigModalOpen}
-        onClose={() => setIsConfigModalOpen(false)}
-        onShowNotification={showNotification}
-      />
+        {isConfigModalOpen && (
+          <SupabaseConfigModal
+            isOpen={isConfigModalOpen}
+            onClose={() => setIsConfigModalOpen(false)}
+            onShowNotification={showNotification}
+          />
+        )}
 
-      <ClientModal
-        isOpen={isClientModalOpen}
-        onClose={() => {
-          setIsClientModalOpen(false);
-          setClientToEdit(null);
-        }}
-        onSave={handleSaveClient}
-        clientToEdit={clientToEdit}
-      />
+        {isClientModalOpen && (
+          <ClientModal
+            isOpen={isClientModalOpen}
+            onClose={() => {
+              setIsClientModalOpen(false);
+              setClientToEdit(null);
+            }}
+            onSave={handleSaveClient}
+            clientToEdit={clientToEdit}
+          />
+        )}
 
-      <DeleteClientModal
-        isOpen={isDeleteModalOpen}
-        client={clientToDelete}
-        onClose={() => {
-          setIsDeleteModalOpen(false);
-          setClientToDelete(null);
-        }}
-        onConfirm={handleConfirmDeleteClient}
-      />
+        {isDeleteModalOpen && (
+          <DeleteClientModal
+            isOpen={isDeleteModalOpen}
+            client={clientToDelete}
+            onClose={() => {
+              setIsDeleteModalOpen(false);
+              setClientToDelete(null);
+            }}
+            onConfirm={handleConfirmDeleteClient}
+          />
+        )}
 
-      <QuoteDetailModal
-        quote={quoteDetail}
-        isOpen={!!quoteDetail}
-        onClose={() => setQuoteDetail(null)}
-        onStatusUpdated={handleQuoteStatusUpdated}
-        onShowNotification={showNotification}
-      />
+        {quoteDetail && (
+          <QuoteDetailModal
+            quote={quoteDetail}
+            isOpen={!!quoteDetail}
+            onClose={() => setQuoteDetail(null)}
+            onStatusUpdated={handleQuoteStatusUpdated}
+            onShowNotification={showNotification}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }
@@ -374,14 +395,18 @@ export default function App() {
       <ProtectedRoute onOpenSupabaseConfig={() => setIsConfigModalOpen(true)}>
         <AppContent />
       </ProtectedRoute>
-      <SupabaseConfigModal
-        isOpen={isConfigModalOpen}
-        onClose={() => setIsConfigModalOpen(false)}
-        onSaved={() => {
-          setIsConfigModalOpen(false);
-          window.location.reload();
-        }}
-      />
+      <Suspense fallback={null}>
+        {isConfigModalOpen && (
+          <SupabaseConfigModal
+            isOpen={isConfigModalOpen}
+            onClose={() => setIsConfigModalOpen(false)}
+            onSaved={() => {
+              setIsConfigModalOpen(false);
+              window.location.reload();
+            }}
+          />
+        )}
+      </Suspense>
     </AuthProvider>
   );
 }

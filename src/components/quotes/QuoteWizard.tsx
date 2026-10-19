@@ -1,8 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Client, ProjectType, Quote, QuoteItem, OnboardingFullConfig } from '../../types';
 import { quoteService } from '../../services/quoteService';
 import { settingsService } from '../../services/settingsService';
-import { calculationService, GeneralCalculationResult } from '../../services/calculationService';
+import {
+  calculationService,
+  GeneralCalculationResult,
+  PackagingCalculationResult,
+} from '../../services/calculationService';
 import { UnsavedChangesModal } from './UnsavedChangesModal';
 import { 
   Calculator, 
@@ -31,6 +35,144 @@ import {
   Scissors,
   HelpCircle
 } from 'lucide-react';
+
+interface OffsetWasteCardProps {
+  calc: GeneralCalculationResult;
+  quantity: number;
+  offsetInks: string;
+}
+
+const OffsetWasteCard = React.memo<OffsetWasteCardProps>(({ calc, quantity, offsetInks }) => {
+  return (
+    <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F4FDF7] to-[#EDF9F2] border border-[#10B981]/25 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs sm:text-sm">
+          <Printer className="w-4 h-4 text-[#10B981]" />
+          <span>Cálculo de Merma & Insumos Offset (Estándar Printara)</span>
+        </div>
+        <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#10B981]/20 text-[#059669]">
+          {calc.piecesPerSheet} piezas / pliego
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Pliegos Netos</span>
+          <span className="text-sm sm:text-base font-black text-slate-800 font-mono mt-0.5">
+            {calc.netSheets}
+          </span>
+          <span className="text-[9px] text-slate-400">{quantity} pzas requeridas</span>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Merma Arranque</span>
+          <span className="text-sm sm:text-base font-black text-amber-600 font-mono mt-0.5">
+            +{calc.setupWasteSheets}
+          </span>
+          <span className="text-[9px] text-slate-400">Puesta a punto registro</span>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Merma Tiro + Acabados</span>
+          <span className="text-sm sm:text-base font-black text-amber-600 font-mono mt-0.5">
+            +{calc.runWasteSheets + calc.finishingWasteSheets}
+          </span>
+          <span className="text-[9px] text-slate-400">3% tiro + procesos</span>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 flex flex-col">
+          <span className="text-[10px] font-black text-[#065F46] uppercase">Pliegos Brutos</span>
+          <span className="text-sm sm:text-base font-black text-[#047857] font-mono mt-0.5">
+            {calc.grossSheets}
+          </span>
+          <span className="text-[9px] font-bold text-[#059669]">
+            {calc.wastePercent}% merma total
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-emerald-200/50">
+        <span>
+          <strong>Preprensa:</strong> {calc.plates} placas térmicas CTP ({offsetInks})
+        </span>
+        <span>
+          <strong>Costo papel estimado:</strong> ${calc.totalPaperCost.toFixed(2)} MXN
+        </span>
+      </div>
+    </div>
+  );
+});
+
+interface PackagingEngineeringCardProps {
+  calc: PackagingCalculationResult;
+  quantity: number;
+}
+
+const PackagingEngineeringCard = React.memo<PackagingEngineeringCardProps>(({ calc, quantity }) => {
+  return (
+    <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F4FDF7] to-[#EDF9F2] border border-[#10B981]/25 flex flex-col gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs sm:text-sm">
+          <Scissors className="w-4 h-4 text-[#10B981]" />
+          <span>Ingeniería de Troquel & Desarrollo Extendido (Printara)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#10B981]/20 text-[#059669]">
+            {calc.imposition.piecesPerSheet} cajas / pliego ({calc.imposition.isRotated ? 'Girada 90°' : 'Normal'})
+          </span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+            {calc.imposition.sheetUtilizationPercent}% útil
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Desarrollo Plano</span>
+          <span className="text-xs sm:text-sm font-black text-slate-800 font-mono mt-0.5">
+            {calc.boxFlat.flatWidthCm} × {calc.boxFlat.flatHeightCm} cm
+          </span>
+          <span className="text-[9px] text-slate-400">Pestaña: {calc.boxFlat.glueFlapCm} cm</span>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Pliegos Netos</span>
+          <span className="text-sm sm:text-base font-black text-slate-800 font-mono mt-0.5">
+            {calc.netSheets}
+          </span>
+          <span className="text-[9px] text-slate-400">{quantity} cajas requeridas</span>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Cuchilla en Suaje</span>
+          <span className="text-xs sm:text-sm font-black text-slate-800 font-mono mt-0.5">
+            {(calc.boxFlat.totalRuleMeters * calc.imposition.piecesPerSheet).toFixed(1)} m
+          </span>
+          <span className="text-[9px] text-slate-400">Corte + Plecas en pliego</span>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 flex flex-col">
+          <span className="text-[10px] font-black text-[#065F46] uppercase">Pliegos Brutos</span>
+          <span className="text-sm sm:text-base font-black text-[#047857] font-mono mt-0.5">
+            {calc.grossSheets}
+          </span>
+          <span className="text-[9px] font-bold text-[#059669]">
+            {calc.waste.wastePercent}% merma total
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-emerald-200/50 gap-1">
+        <span>
+          <strong>Troquel Láser:</strong> {calc.dieManufacturingCost > 0 ? `$${calc.dieManufacturingCost.toFixed(2)} MXN (Nuevo)` : 'Sin costo (Suaje existente)'}
+        </span>
+        <span>
+          <strong>Procesos incluidos:</strong> Impresión + Troquelado + Pegado mecanizado
+        </span>
+      </div>
+    </div>
+  );
+});
 
 interface QuoteWizardProps {
   clients: Client[];
@@ -142,8 +284,8 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Detección de cambios sin guardar
-  const isDirty = Boolean(
+  // Detección de cambios sin guardar (Memoizado para no recalcular strings en cada render)
+  const isDirty = useMemo(() => Boolean(
     projectTitle.trim() ||
     material.trim() ||
     observations.trim() ||
@@ -153,19 +295,19 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
     editorialSpineCm !== 0.8 ||
     boxType !== 'lineal' ||
     gfSubstrate !== 'Lona Frontlit 13oz'
-  );
+  ), [projectTitle, material, observations, quantity, items.length, generalPaperType, editorialSpineCm, boxType, gfSubstrate]);
 
-  // Estimación y desglose de merma e insumos offset según guías técnicas Printara
-  // (calcular-merma-imprenta, como-cotizar-impresion-offset, tabla-precios-imprenta-mexico)
-  const getOffsetCalculations = (): GeneralCalculationResult => {
+  // Estimación y desglose de merma e insumos offset memoizados
+  const offsetCalculations = useMemo((): GeneralCalculationResult | null => {
+    if (projectType !== 'general') return null;
     return calculationService.calculateGeneral(
       {
         size: generalSize,
-        customWidth: generalCustomWidth,
-        customHeight: generalCustomHeight,
+        customWidth: Number(generalCustomWidth) || 21.5,
+        customHeight: Number(generalCustomHeight) || 28,
         paperType: generalPaperType,
         grammage: generalGrammage,
-        quantity: quantity || 1000,
+        quantity: Number(quantity) || 1000,
         offsetInks,
         offsetLamination,
         offsetVarnish,
@@ -173,17 +315,32 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
       },
       config
     );
-  };
+  }, [
+    projectType,
+    generalSize,
+    generalCustomWidth,
+    generalCustomHeight,
+    generalPaperType,
+    generalGrammage,
+    quantity,
+    offsetInks,
+    offsetLamination,
+    offsetVarnish,
+    offsetFolding,
+    config,
+  ]);
 
-  const getPackagingCalculations = () => {
+  // Cálculo de empaque memoizado (se ejecuta SOLO al cambiar variables de empaque)
+  const packagingCalculations = useMemo((): PackagingCalculationResult | null => {
+    if (projectType !== 'empaque') return null;
     return calculationService.calculateEmpaqueDetailed(
       {
         boxType,
-        lengthCm: boxLengthCm,
-        widthCm: boxWidthCm,
-        heightCm: boxHeightCm,
+        lengthCm: Number(boxLengthCm) || 12,
+        widthCm: Number(boxWidthCm) || 8,
+        heightCm: Number(boxHeightCm) || 15,
         substrate: boxSubstrate,
-        quantity: quantity || 1000,
+        quantity: Number(quantity) || 1000,
         inks: boxInks,
         finish: boxFinish,
         hasExistingDie: boxHasExistingDie,
@@ -191,14 +348,41 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
       },
       config
     );
-  };
+  }, [
+    projectType,
+    boxType,
+    boxLengthCm,
+    boxWidthCm,
+    boxHeightCm,
+    boxSubstrate,
+    quantity,
+    boxInks,
+    boxFinish,
+    boxHasExistingDie,
+    boxSheetSize,
+    config,
+  ]);
 
-  // Generar partidas calculadas según la línea
-  const generateCalculatedItems = () => {
+  // Generar partidas calculadas según la línea (Callback estable)
+  const generateCalculatedItems = useCallback(() => {
     let newItems: Omit<QuoteItem, 'id' | 'quote_id'>[] = [];
 
     if (projectType === 'general') {
-      const calc = getOffsetCalculations();
+      const calc = offsetCalculations || calculationService.calculateGeneral(
+        {
+          size: generalSize,
+          customWidth: Number(generalCustomWidth) || 21.5,
+          customHeight: Number(generalCustomHeight) || 28,
+          paperType: generalPaperType,
+          grammage: generalGrammage,
+          quantity: Number(quantity) || 1000,
+          offsetInks,
+          offsetLamination,
+          offsetVarnish,
+          offsetFolding,
+        },
+        config
+      );
       newItems = calc.items;
     } else if (projectType === 'editorial') {
       newItems = calculationService.calculateEditorial(
@@ -209,12 +393,26 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
           flapCm: editorialFlapCm,
           coverPaperType: editorialPaperType,
           coverGrammage: editorialGrammage,
-          quantity: quantity || 1000,
+          quantity: Number(quantity) || 1000,
         },
         config
       );
     } else if (projectType === 'empaque') {
-      const calc = getPackagingCalculations();
+      const calc = packagingCalculations || calculationService.calculateEmpaqueDetailed(
+        {
+          boxType,
+          lengthCm: Number(boxLengthCm) || 12,
+          widthCm: Number(boxWidthCm) || 8,
+          heightCm: Number(boxHeightCm) || 15,
+          substrate: boxSubstrate,
+          quantity: Number(quantity) || 1000,
+          inks: boxInks,
+          finish: boxFinish,
+          hasExistingDie: boxHasExistingDie,
+          sheetSize: boxSheetSize,
+        },
+        config
+      );
       newItems = calc.items;
     } else {
       // Gran Formato
@@ -223,7 +421,7 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
           substrate: gfSubstrate,
           widthM: gfWidthM,
           heightM: gfHeightM,
-          quantity: quantity || 1,
+          quantity: Number(quantity) || 1,
           dpi: gfDpi,
           inkType: gfInkType,
           finishes: gfFinishes,
@@ -235,15 +433,62 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
 
     setItems(newItems);
     setViewMode('review');
-  };
+  }, [
+    projectType,
+    offsetCalculations,
+    packagingCalculations,
+    generalSize,
+    generalCustomWidth,
+    generalCustomHeight,
+    generalPaperType,
+    generalGrammage,
+    quantity,
+    offsetInks,
+    offsetLamination,
+    offsetVarnish,
+    offsetFolding,
+    editorialSize,
+    editorialPages,
+    editorialSpineCm,
+    editorialFlapCm,
+    editorialPaperType,
+    editorialGrammage,
+    boxType,
+    boxLengthCm,
+    boxWidthCm,
+    boxHeightCm,
+    boxSubstrate,
+    boxInks,
+    boxFinish,
+    boxHasExistingDie,
+    boxSheetSize,
+    gfSubstrate,
+    gfWidthM,
+    gfHeightM,
+    gfDpi,
+    gfInkType,
+    gfFinishes,
+    gfWastePercent,
+    config,
+  ]);
 
-  // Cálculos financieros en tiempo real
-  const rawSubtotal = items.reduce((sum, it) => sum + Number(it.subtotal || 0), 0);
-  const discountAmount = (rawSubtotal * Number(discountPercent || 0)) / 100;
-  const taxableAmount = Math.max(0, rawSubtotal - discountAmount);
-  const taxRate = 16.0;
-  const taxAmount = (taxableAmount * taxRate) / 100;
-  const total = taxableAmount + taxAmount;
+  // Cálculos financieros en tiempo real (Memoizados)
+  const { rawSubtotal, discountAmount, taxableAmount, taxRate, taxAmount, total } = useMemo(() => {
+    const raw = items.reduce((sum, it) => sum + Number(it.subtotal || 0), 0);
+    const disc = (raw * Number(discountPercent || 0)) / 100;
+    const taxable = Math.max(0, raw - disc);
+    const rate = 16.0;
+    const tax = (taxable * rate) / 100;
+    const tot = taxable + tax;
+    return {
+      rawSubtotal: raw,
+      discountAmount: disc,
+      taxableAmount: taxable,
+      taxRate: rate,
+      taxAmount: tax,
+      total: tot,
+    };
+  }, [items, discountPercent]);
 
   // Interceptar navegación cuando hay cambios
   const attemptNavigation = (action: () => void) => {
@@ -961,67 +1206,13 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
                 </div>
 
                 {/* TARJETA DINÁMICA DE MERMA Y RENDIMIENTO PRINTARA */}
-                {(() => {
-                  const calc = getOffsetCalculations();
-                  return (
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F4FDF7] to-[#EDF9F2] border border-[#10B981]/25 flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs sm:text-sm">
-                          <Printer className="w-4 h-4 text-[#10B981]" />
-                          <span>Cálculo de Merma & Insumos Offset (Estándar Printara)</span>
-                        </div>
-                        <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#10B981]/20 text-[#059669]">
-                          {calc.piecesPerSheet} piezas / pliego
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Pliegos Netos</span>
-                          <span className="text-sm sm:text-base font-black text-slate-800 font-mono mt-0.5">
-                            {calc.netSheets}
-                          </span>
-                          <span className="text-[9px] text-slate-400">{quantity} pzas requeridas</span>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Merma Arranque</span>
-                          <span className="text-sm sm:text-base font-black text-amber-600 font-mono mt-0.5">
-                            +{calc.setupWasteSheets}
-                          </span>
-                          <span className="text-[9px] text-slate-400">Puesta a punto registro</span>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Merma Tiro + Acabados</span>
-                          <span className="text-sm sm:text-base font-black text-amber-600 font-mono mt-0.5">
-                            +{calc.runWasteSheets + calc.finishingWasteSheets}
-                          </span>
-                          <span className="text-[9px] text-slate-400">3% tiro + procesos</span>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 flex flex-col">
-                          <span className="text-[10px] font-black text-[#065F46] uppercase">Pliegos Brutos</span>
-                          <span className="text-sm sm:text-base font-black text-[#047857] font-mono mt-0.5">
-                            {calc.grossSheets}
-                          </span>
-                          <span className="text-[9px] font-bold text-[#059669]">
-                            {calc.wastePercent}% merma total
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-emerald-200/50">
-                        <span>
-                          <strong>Preprensa:</strong> {calc.plates} placas térmicas CTP ({offsetInks})
-                        </span>
-                        <span>
-                          <strong>Costo papel estimado:</strong> ${calc.totalPaperCost.toFixed(2)} MXN
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {offsetCalculations && (
+                  <OffsetWasteCard
+                    calc={offsetCalculations}
+                    quantity={Number(quantity) || 1000}
+                    offsetInks={offsetInks}
+                  />
+                )}
               </>
             )}
 
@@ -1374,72 +1565,12 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
                 </div>
 
                 {/* TARJETA DINÁMICA DE INGENIERÍA DE TROQUEL & IMPOSICIÓN PRINTARA */}
-                {(() => {
-                  const pCalc = getPackagingCalculations();
-                  return (
-                    <div className="p-4 rounded-2xl bg-gradient-to-br from-[#F4FDF7] to-[#EDF9F2] border border-[#10B981]/25 flex flex-col gap-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs sm:text-sm">
-                          <Scissors className="w-4 h-4 text-[#10B981]" />
-                          <span>Ingeniería de Troquel & Desarrollo Extendido (Printara)</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-[#10B981]/20 text-[#059669]">
-                            {pCalc.imposition.piecesPerSheet} cajas / pliego ({pCalc.imposition.isRotated ? 'Girada 90°' : 'Normal'})
-                          </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                            {pCalc.imposition.sheetUtilizationPercent}% útil
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Desarrollo Plano</span>
-                          <span className="text-xs sm:text-sm font-black text-slate-800 font-mono mt-0.5">
-                            {pCalc.boxFlat.flatWidthCm} × {pCalc.boxFlat.flatHeightCm} cm
-                          </span>
-                          <span className="text-[9px] text-slate-400">Pestaña: {pCalc.boxFlat.glueFlapCm} cm</span>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Pliegos Netos</span>
-                          <span className="text-sm sm:text-base font-black text-slate-800 font-mono mt-0.5">
-                            {pCalc.netSheets}
-                          </span>
-                          <span className="text-[9px] text-slate-400">{quantity} cajas requeridas</span>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-emerald-100 flex flex-col">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Cuchilla en Suaje</span>
-                          <span className="text-xs sm:text-sm font-black text-slate-800 font-mono mt-0.5">
-                            {(pCalc.boxFlat.totalRuleMeters * pCalc.imposition.piecesPerSheet).toFixed(1)} m
-                          </span>
-                          <span className="text-[9px] text-slate-400">Corte + Plecas en pliego</span>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 flex flex-col">
-                          <span className="text-[10px] font-black text-[#065F46] uppercase">Pliegos Brutos</span>
-                          <span className="text-sm sm:text-base font-black text-[#047857] font-mono mt-0.5">
-                            {pCalc.grossSheets}
-                          </span>
-                          <span className="text-[9px] font-bold text-[#059669]">
-                            {pCalc.waste.wastePercent}% merma total
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-600 pt-1 border-t border-emerald-200/50 gap-1">
-                        <span>
-                          <strong>Troquel Láser:</strong> {pCalc.dieManufacturingCost > 0 ? `$${pCalc.dieManufacturingCost.toFixed(2)} MXN (Nuevo)` : 'Sin costo (Suaje existente)'}
-                        </span>
-                        <span>
-                          <strong>Procesos incluidos:</strong> Impresión + Troquelado + Pegado mecanizado
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {packagingCalculations && (
+                  <PackagingEngineeringCard
+                    calc={packagingCalculations}
+                    quantity={Number(quantity) || 1000}
+                  />
+                )}
               </>
             )}
 
@@ -1692,7 +1823,8 @@ export const QuoteWizard: React.FC<QuoteWizardProps> = ({
 
             {/* TABLA DE ESCALA DE PRECIOS Y MERMA PRINTARA (Offset General) */}
             {projectType === 'general' && (() => {
-              const calc = getOffsetCalculations();
+              const calc = offsetCalculations;
+              if (!calc) return null;
               return (
                 <div className="mt-2 p-4 rounded-2xl bg-[#FAF8F5] border border-[#E9E4D9] flex flex-col gap-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
