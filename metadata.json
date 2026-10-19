@@ -1,0 +1,7 @@
+{
+  "name": "Cotizador & CRM Comercial - Grupo Chimal",
+  "description": "Sistema comercial e industrial de cotizaciones y gestión de clientes con arquitectura Supabase, PostgreSQL y diseño responsivo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
