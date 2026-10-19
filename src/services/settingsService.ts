@@ -281,6 +281,8 @@ let inMemoryConfig: OnboardingFullConfig = cachedInitial || {
 };
 
 let activeGetConfigPromise: Promise<OnboardingFullConfig> | null = null;
+let lastFetchTimestamp = 0;
+const CACHE_TTL_MS = 60 * 1000; // 60 segundos de caché fresca en memoria
 
 export const settingsService = {
   /**
@@ -295,10 +297,22 @@ export const settingsService = {
   },
 
   /**
-   * Obtiene la configuración completa de la empresa y taller con carga en paralelo (Promise.all)
-   * y deduplicación de promesas concurrentes
+   * Invalida la marca de tiempo de la caché para forzar consulta fresca
    */
-  async getConfig(): Promise<OnboardingFullConfig> {
+  invalidateCache() {
+    lastFetchTimestamp = 0;
+  },
+
+  /**
+   * Obtiene la configuración completa de la empresa y taller con carga en paralelo (Promise.all),
+   * caché por tiempo (TTL) y deduplicación de promesas concurrentes
+   */
+  async getConfig(forceReload: boolean = false): Promise<OnboardingFullConfig> {
+    // Si la caché en memoria está fresca y no se solicita recarga forzada, retornar en 0 ms
+    if (!forceReload && lastFetchTimestamp > 0 && Date.now() - lastFetchTimestamp < CACHE_TTL_MS) {
+      return inMemoryConfig;
+    }
+
     if (activeGetConfigPromise) {
       return activeGetConfigPromise;
     }
@@ -445,6 +459,7 @@ export const settingsService = {
             console.warn('Usando configuración de taller local/fallback:', err);
           }
         }
+        lastFetchTimestamp = Date.now();
         saveCachedConfig(inMemoryConfig);
         return inMemoryConfig;
       } finally {
@@ -460,6 +475,7 @@ export const settingsService = {
    */
   async saveFullConfig(config: OnboardingFullConfig): Promise<{ success: boolean; error: string | null }> {
     inMemoryConfig = { ...config };
+    lastFetchTimestamp = Date.now();
     saveCachedConfig(inMemoryConfig);
 
     if (isSupabaseConfigured()) {

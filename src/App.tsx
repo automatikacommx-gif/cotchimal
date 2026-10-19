@@ -60,6 +60,15 @@ export function AppContent() {
     return unsubscribe;
   }, []);
 
+  // Precargar en segundo plano componentes pesados cuando el navegador esté ocioso
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      import('./components/settings/SettingsHub');
+      import('./components/quotes/QuoteWizard');
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const showNotification = (
     message: string,
     type: 'success' | 'error' | 'info' | 'warning' = 'info'

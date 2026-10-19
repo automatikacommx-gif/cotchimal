@@ -48,6 +48,8 @@ export const Header: React.FC<HeaderProps> = ({
       closeTimeoutRef.current = null;
     }
     setMenuOpen(true);
+    // Precarga del módulo en el hover para que al hacer clic la pantalla aparezca en 0ms
+    import('./settings/SettingsHub');
   };
 
   const handleMouseLeaveMenu = () => {
