@@ -1,9 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { CompanyWizard } from './onboarding/CompanyWizard';
-import { TarifarioView } from './TarifarioView';
-import { MachinesView } from './MachinesView';
-import { PapersView } from './PapersView';
-import { TeamView } from './TeamView';
 import { SupabaseConfigModal } from '../SupabaseConfigModal';
 import { ToastNotification } from '../../types';
 import { 
@@ -12,8 +8,29 @@ import {
   Printer, 
   FileText, 
   Users, 
-  Database
+  Database,
+  Loader2
 } from 'lucide-react';
+
+const TarifarioView = React.lazy(() =>
+  import('./TarifarioView').then((m) => ({ default: m.TarifarioView }))
+);
+const MachinesView = React.lazy(() =>
+  import('./MachinesView').then((m) => ({ default: m.MachinesView }))
+);
+const PapersView = React.lazy(() =>
+  import('./PapersView').then((m) => ({ default: m.PapersView }))
+);
+const TeamView = React.lazy(() =>
+  import('./TeamView').then((m) => ({ default: m.TeamView }))
+);
+
+const SubViewFallback = () => (
+  <div className="w-full py-16 flex flex-col items-center justify-center gap-2 text-slate-400 animate-in fade-in">
+    <Loader2 className="w-6 h-6 animate-spin text-[#198754]" />
+    <span className="text-xs font-medium text-slate-500">Cargando módulo de configuración...</span>
+  </div>
+);
 
 export type SettingsSubMenu = 'empresa' | 'tarifario' | 'maquinas' | 'papeles' | 'equipo';
 
@@ -142,29 +159,31 @@ export const SettingsHub: React.FC<SettingsHubProps> = ({
           />
         )}
 
-        {activeSubMenu === 'tarifario' && (
-          <TarifarioView
-            onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
-          />
-        )}
+        <Suspense fallback={<SubViewFallback />}>
+          {activeSubMenu === 'tarifario' && (
+            <TarifarioView
+              onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
+            />
+          )}
 
-        {activeSubMenu === 'maquinas' && (
-          <MachinesView
-            onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
-          />
-        )}
+          {activeSubMenu === 'maquinas' && (
+            <MachinesView
+              onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
+            />
+          )}
 
-        {activeSubMenu === 'papeles' && (
-          <PapersView
-            onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
-          />
-        )}
+          {activeSubMenu === 'papeles' && (
+            <PapersView
+              onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
+            />
+          )}
 
-        {activeSubMenu === 'equipo' && (
-          <TeamView
-            onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
-          />
-        )}
+          {activeSubMenu === 'equipo' && (
+            <TeamView
+              onShowToast={(toast) => onShowToast({ ...toast, description: '' })}
+            />
+          )}
+        </Suspense>
       </div>
 
       {/* Supabase Connection & SQL Migration Modal */}

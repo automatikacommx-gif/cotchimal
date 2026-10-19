@@ -127,7 +127,7 @@ const MASTER_CATALOG_PRESETS: PaperType[] = [
 ];
 
 export const PapersView: React.FC<PapersViewProps> = ({ onShowToast }) => {
-  const [papers, setPapers] = useState<PaperType[]>([]);
+  const [papers, setPapers] = useState<PaperType[]>(() => settingsService.getCachedConfig().papers);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Modales
@@ -139,7 +139,15 @@ export const PapersView: React.FC<PapersViewProps> = ({ onShowToast }) => {
   const [editingFamily, setEditingFamily] = useState<PaperType | null>(null);
 
   useEffect(() => {
-    settingsService.getConfig().then((cfg) => setPapers(cfg.papers));
+    let isMounted = true;
+    settingsService.getConfig().then((cfg) => {
+      if (isMounted) {
+        setPapers(cfg.papers);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleToggleFamily = async (id: string) => {

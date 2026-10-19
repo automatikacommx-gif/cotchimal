@@ -28,7 +28,7 @@ interface TarifarioViewProps {
 }
 
 export const TarifarioView: React.FC<TarifarioViewProps> = ({ onShowToast }) => {
-  const [config, setConfig] = useState<OnboardingFullConfig | null>(null);
+  const [config, setConfig] = useState<OnboardingFullConfig>(() => settingsService.getCachedConfig());
   const [activeTab, setActiveTab] = useState<TarifarioTab>('preprensa');
   const [isSaving, setIsSaving] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -45,7 +45,15 @@ export const TarifarioView: React.FC<TarifarioViewProps> = ({ onShowToast }) => 
   const [newZoneUnit, setNewZoneUnit] = useState('/proyecto');
 
   useEffect(() => {
-    settingsService.getConfig().then(setConfig);
+    let isMounted = true;
+    settingsService.getConfig().then((data) => {
+      if (isMounted) {
+        setConfig(data);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (!config) {

@@ -19,6 +19,46 @@ interface CompanyWizardProps {
   navTrigger?: number;
 }
 
+const normalizeWizardConfig = (data: OnboardingFullConfig): OnboardingFullConfig => {
+  const workTypes: WorkTypeId[] = (data.company.work_types && data.company.work_types.length > 0)
+    ? (data.company.work_types.includes('general')
+        ? (data.company.work_types as WorkTypeId[])
+        : (['general', ...data.company.work_types] as WorkTypeId[]))
+    : ['general'];
+
+  const hasAnyConfiguredGrammages = data.papers.some(
+    (p) => p.grammages && p.grammages.length > 0
+  );
+  const hasCustomPapers = data.papers.some((p) => p.category === 'personalizado');
+  let papers = data.papers;
+  if (!hasCustomPapers && !hasAnyConfiguredGrammages && data.papers.every((p) => p.selected)) {
+    papers = data.papers.map((p) => {
+      const isTopThree =
+        p.code === 'BON' ||
+        p.code === 'COU' ||
+        p.code === 'OPA' ||
+        p.name.toLowerCase().includes('bond') ||
+        p.name.toLowerCase().includes('couché') ||
+        p.name.toLowerCase().includes('couche') ||
+        p.name.toLowerCase().includes('opalina');
+      return {
+        ...p,
+        selected: isTopThree,
+        category: isTopThree ? ('frecuente' as const) : ('comun' as const),
+      };
+    });
+  }
+
+  return {
+    ...data,
+    company: {
+      ...data.company,
+      work_types: workTypes,
+    },
+    papers,
+  };
+};
+
 export const CompanyWizard: React.FC<CompanyWizardProps> = ({
   onGoToQuote,
   onGoToClients,
@@ -32,8 +72,9 @@ export const CompanyWizard: React.FC<CompanyWizardProps> = ({
   const [step3SubStep, setStep3SubStep] = useState<1 | 2>(initialStep3SubStep);
   const [step4SubStep, setStep4SubStep] = useState<1 | 2>(1);
   const [returnToSummary, setReturnToSummary] = useState<boolean>(false);
-  const [config, setConfig] = useState<OnboardingFullConfig | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [config, setConfig] = useState<OnboardingFullConfig>(() =>
+    normalizeWizardConfig(settingsService.getCachedConfig())
+  );
 
   useEffect(() => {
     setCurrentStep(initialStep);
@@ -41,58 +82,21 @@ export const CompanyWizard: React.FC<CompanyWizardProps> = ({
   }, [initialStep, initialStep3SubStep, navTrigger]);
 
   useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        const data = await settingsService.getConfig();
-
-        // Garantizar que la ÚNICA especialidad por defecto sea 'general' si no hay configuración previa
-        const workTypes: WorkTypeId[] = (data.company.work_types && data.company.work_types.length > 0)
-          ? (data.company.work_types.includes('general')
-              ? (data.company.work_types as WorkTypeId[])
-              : (['general', ...data.company.work_types] as WorkTypeId[]))
-          : ['general'];
-
-        // Solo inicializar selección de Bond, Couché y Opalina si todos vienen activos sin ningún gramaje configurado
-        const hasAnyConfiguredGrammages = data.papers.some(
-          (p) => p.grammages && p.grammages.length > 0
-        );
-        const hasCustomPapers = data.papers.some((p) => p.category === 'personalizado');
-        let papers = data.papers;
-        if (!hasCustomPapers && !hasAnyConfiguredGrammages && data.papers.every((p) => p.selected)) {
-          papers = data.papers.map((p) => {
-            const isTopThree =
-              p.code === 'BON' ||
-              p.code === 'COU' ||
-              p.code === 'OPA' ||
-              p.name.toLowerCase().includes('bond') ||
-              p.name.toLowerCase().includes('couché') ||
-              p.name.toLowerCase().includes('couche') ||
-              p.name.toLowerCase().includes('opalina');
-            return {
-              ...p,
-              selected: isTopThree,
-              category: isTopThree ? ('frecuente' as const) : ('comun' as const),
-            };
-          });
+    let isCurrent = true;
+    settingsService
+      .getConfig()
+      .then((data) => {
+        if (isCurrent) {
+          setConfig(normalizeWizardConfig(data));
         }
-
-        const initializedConfig: OnboardingFullConfig = {
-          ...data,
-          company: {
-            ...data.company,
-            work_types: workTypes,
-          },
-          papers,
-        };
-
-        setConfig(initializedConfig);
-      } catch (err) {
+      })
+      .catch((err) => {
         console.error('Error cargando configuración:', err);
-      } finally {
-        setIsLoading(false);
-      }
+      });
+
+    return () => {
+      isCurrent = false;
     };
-    loadConfig();
   }, [navTrigger]);
 
   const handleFinish = async () => {
@@ -138,13 +142,7 @@ export const CompanyWizard: React.FC<CompanyWizardProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (isLoading || !config) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-4 border-[#198754] border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+
 
   const stepsMeta = [
     { num: 1, label: 'Tu imprenta' },

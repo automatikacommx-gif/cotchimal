@@ -272,7 +272,6 @@ const saveCachedConfig = (cfg: OnboardingFullConfig) => {
 
 const cachedInitial = loadCachedConfig();
 
-// Store en memoria con sincronización a localStorage y Supabase
 let inMemoryConfig: OnboardingFullConfig = cachedInitial || {
   company: { ...INITIAL_COMPANY_SETTINGS },
   machines: [], // Estado inicial vacío según requerimiento estricto
@@ -281,165 +280,179 @@ let inMemoryConfig: OnboardingFullConfig = cachedInitial || {
   shipping_zones: [...INITIAL_SHIPPING_ZONES],
 };
 
+let activeGetConfigPromise: Promise<OnboardingFullConfig> | null = null;
+
 export const settingsService = {
   /**
-   * Obtiene la configuración completa de la empresa y taller
+   * Obtiene la configuración síncrona en memoria/localStorage de forma instantánea (0 ms)
    */
-  async getConfig(): Promise<OnboardingFullConfig> {
+  getCachedConfig(): OnboardingFullConfig {
     const localSnapshot = loadCachedConfig();
     if (localSnapshot) {
       inMemoryConfig = localSnapshot;
     }
-
-    if (isSupabaseConfigured()) {
-      try {
-        const { data: companyData } = await supabase
-          .from('company_settings')
-          .select('*')
-          .limit(1)
-          .maybeSingle();
-
-        if (companyData) {
-          inMemoryConfig.company = {
-            ...inMemoryConfig.company,
-            ...companyData,
-          };
-        }
-
-        // Cargar máquinas configuradas en Supabase
-        const { data: machinesData } = await supabase
-          .from('workshop_machines')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (machinesData && machinesData.length > 0) {
-          inMemoryConfig.machines = machinesData
-            .map((m) => ({
-              id: m.id || `m-${m.name}`,
-              name: m.name,
-              tag: m.tag || '',
-              max_width_cm: Number(m.max_width_cm) || 0,
-              max_height_cm: Number(m.max_height_cm) || 0,
-              max_calibre_pts: m.max_calibre_pts ? Number(m.max_calibre_pts) : undefined,
-              gripper_margin_cm: Number(m.gripper_margin_cm) ?? 1,
-              counter_gripper_margin_cm: Number(m.counter_gripper_margin_cm) ?? 1,
-              guide_margin_cm: Number(m.guide_margin_cm) ?? 0.4,
-              counter_guide_margin_cm: Number(m.counter_guide_margin_cm) ?? 0.4,
-              useful_width_cm: Number(m.useful_width_cm) || 0,
-              useful_height_cm: Number(m.useful_height_cm) || 0,
-              sheet_size: m.sheet_size || `${m.max_width_cm}×${m.max_height_cm} cm`,
-              plate_price: Number(m.plate_price) || 80,
-              pricing_mode: m.pricing_mode || (m.print_price_type === 'escala' ? 'scale' : 'fixed'),
-              print_price_type: m.print_price_type || 'fijo',
-              print_price: Number(m.print_price) || 80,
-              print_price_fixed: Number(m.print_price_fixed || m.print_price) || 80,
-              price_scales: Array.isArray(m.price_scales) 
-                ? m.price_scales 
-                : (typeof m.price_scales === 'string' ? JSON.parse(m.price_scales) : [...DEFAULT_PRICE_SCALES]),
-              waste_ranges: m.waste_ranges || '5 rangos · desde 100 plgs',
-              waste_scales: Array.isArray(m.waste_scales)
-                ? m.waste_scales
-                : (typeof m.waste_scales === 'string' ? JSON.parse(m.waste_scales) : [...DEFAULT_WASTE_RANGES]),
-              is_active: m.is_active ?? true,
-              machine_type: m.machine_type || 'offset',
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name));
-        }
-
-        // Cargar catálogo de papeles desde Supabase y fusionar sin perder gramajes locales
-        const { data: papersData } = await supabase
-          .from('paper_catalog')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (papersData && papersData.length > 0) {
-          const dbPapers: PaperType[] = papersData.map((p) => {
-            const parsedGrammages = Array.isArray(p.grammages)
-              ? p.grammages
-              : typeof p.grammages === 'string'
-              ? JSON.parse(p.grammages)
-              : [];
-
-            // Buscar si en memoria/localStorage ya tenía gramajes configurados
-            const localMatch = inMemoryConfig.papers.find(
-              (lp) =>
-                lp.code?.toUpperCase() === p.code?.toUpperCase() ||
-                lp.name?.toLowerCase() === p.name?.toLowerCase()
-            );
-
-            const finalGrammages =
-              parsedGrammages.length > 0
-                ? parsedGrammages
-                : localMatch?.grammages && localMatch.grammages.length > 0
-                ? localMatch.grammages
-                : [];
-
-            return {
-              id: p.id || localMatch?.id || `p-${p.code}`,
-              code: p.code,
-              name: p.name,
-              description: p.description || localMatch?.description || '',
-              category: (p.category || localMatch?.category || 'frecuente') as any,
-              selected: p.is_active ?? localMatch?.selected ?? true,
-              grammages: finalGrammages,
-            };
-          });
-
-          // Conservar también papeles del catálogo base que aún no estén en la tabla de Supabase
-          const mergedPapers = [...dbPapers];
-          for (const baseP of inMemoryConfig.papers) {
-            const exists = mergedPapers.some(
-              (dp) =>
-                dp.code?.toUpperCase() === baseP.code?.toUpperCase() ||
-                dp.name?.toLowerCase() === baseP.name?.toLowerCase()
-            );
-            if (!exists) {
-              mergedPapers.push(baseP);
-            }
-          }
-
-          inMemoryConfig.papers = mergedPapers;
-        }
-
-        // Cargar servicios y acabados desde Supabase
-        const { data: servicesData } = await supabase
-          .from('workshop_services')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (servicesData && servicesData.length > 0) {
-          inMemoryConfig.services = servicesData.map((s) => ({
-            id: s.id || `srv-${s.name}`,
-            name: s.name,
-            category: s.category as any,
-            rate_mode: (s.rate_mode as any) || 'General',
-            price: Number(s.price) || 0,
-            unit: s.unit || 'por pieza',
-            min_price: s.min_price ? Number(s.min_price) : undefined,
-            is_selected: s.is_selected ?? true,
-          }));
-        }
-
-        // Cargar zonas de envío desde Supabase
-        const { data: shippingData } = await supabase
-          .from('shipping_zones')
-          .select('*')
-          .order('created_at', { ascending: true });
-
-        if (shippingData && shippingData.length > 0) {
-          inMemoryConfig.shipping_zones = shippingData.map((z) => ({
-            id: z.id || `zone-${z.name}`,
-            name: z.name,
-            price: Number(z.price) || 0,
-            unit: z.unit || '/proyecto',
-          }));
-        }
-      } catch (err) {
-        console.warn('Usando configuración de taller local/fallback:', err);
-      }
-    }
-    saveCachedConfig(inMemoryConfig);
     return inMemoryConfig;
+  },
+
+  /**
+   * Obtiene la configuración completa de la empresa y taller con carga en paralelo (Promise.all)
+   * y deduplicación de promesas concurrentes
+   */
+  async getConfig(): Promise<OnboardingFullConfig> {
+    if (activeGetConfigPromise) {
+      return activeGetConfigPromise;
+    }
+
+    activeGetConfigPromise = (async () => {
+      try {
+        const localSnapshot = loadCachedConfig();
+        if (localSnapshot) {
+          inMemoryConfig = localSnapshot;
+        }
+
+        if (isSupabaseConfigured()) {
+          try {
+            // Ejecución paralela de las 5 consultas sin cascada
+            const [companyRes, machinesRes, papersRes, servicesRes, shippingRes] = await Promise.all([
+              supabase.from('company_settings').select('*').limit(1).maybeSingle(),
+              supabase.from('workshop_machines').select('*').order('created_at', { ascending: true }),
+              supabase.from('paper_catalog').select('*').order('created_at', { ascending: true }),
+              supabase.from('workshop_services').select('*').order('created_at', { ascending: true }),
+              supabase.from('shipping_zones').select('*').order('created_at', { ascending: true }),
+            ]);
+
+            const companyData = companyRes.data;
+            if (companyData) {
+              inMemoryConfig.company = {
+                ...inMemoryConfig.company,
+                ...companyData,
+              };
+            }
+
+            // Cargar máquinas configuradas en Supabase
+            const machinesData = machinesRes.data;
+            if (machinesData && machinesData.length > 0) {
+              inMemoryConfig.machines = machinesData
+                .map((m) => ({
+                  id: m.id || `m-${m.name}`,
+                  name: m.name,
+                  tag: m.tag || '',
+                  max_width_cm: Number(m.max_width_cm) || 0,
+                  max_height_cm: Number(m.max_height_cm) || 0,
+                  max_calibre_pts: m.max_calibre_pts ? Number(m.max_calibre_pts) : undefined,
+                  gripper_margin_cm: Number(m.gripper_margin_cm) ?? 1,
+                  counter_gripper_margin_cm: Number(m.counter_gripper_margin_cm) ?? 1,
+                  guide_margin_cm: Number(m.guide_margin_cm) ?? 0.4,
+                  counter_guide_margin_cm: Number(m.counter_guide_margin_cm) ?? 0.4,
+                  useful_width_cm: Number(m.useful_width_cm) || 0,
+                  useful_height_cm: Number(m.useful_height_cm) || 0,
+                  sheet_size: m.sheet_size || `${m.max_width_cm}×${m.max_height_cm} cm`,
+                  plate_price: Number(m.plate_price) || 80,
+                  pricing_mode: m.pricing_mode || (m.print_price_type === 'escala' ? 'scale' : 'fixed'),
+                  print_price_type: m.print_price_type || 'fijo',
+                  print_price: Number(m.print_price) || 80,
+                  print_price_fixed: Number(m.print_price_fixed || m.print_price) || 80,
+                  price_scales: Array.isArray(m.price_scales) 
+                    ? m.price_scales 
+                    : (typeof m.price_scales === 'string' ? JSON.parse(m.price_scales) : [...DEFAULT_PRICE_SCALES]),
+                  waste_ranges: m.waste_ranges || '5 rangos · desde 100 plgs',
+                  waste_scales: Array.isArray(m.waste_scales)
+                    ? m.waste_scales
+                    : (typeof m.waste_scales === 'string' ? JSON.parse(m.waste_scales) : [...DEFAULT_WASTE_RANGES]),
+                  is_active: m.is_active ?? true,
+                  machine_type: m.machine_type || 'offset',
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name));
+            }
+
+            // Cargar catálogo de papeles desde Supabase y fusionar sin perder gramajes locales
+            const papersData = papersRes.data;
+            if (papersData && papersData.length > 0) {
+              const dbPapers: PaperType[] = papersData.map((p) => {
+                const parsedGrammages = Array.isArray(p.grammages)
+                  ? p.grammages
+                  : typeof p.grammages === 'string'
+                  ? JSON.parse(p.grammages)
+                  : [];
+
+                // Buscar si en memoria/localStorage ya tenía gramajes configurados
+                const localMatch = inMemoryConfig.papers.find(
+                  (lp) =>
+                    lp.code?.toUpperCase() === p.code?.toUpperCase() ||
+                    lp.name?.toLowerCase() === p.name?.toLowerCase()
+                );
+
+                const finalGrammages =
+                  parsedGrammages.length > 0
+                    ? parsedGrammages
+                    : localMatch?.grammages && localMatch.grammages.length > 0
+                    ? localMatch.grammages
+                    : [];
+
+                return {
+                  id: p.id || localMatch?.id || `p-${p.code}`,
+                  code: p.code,
+                  name: p.name,
+                  description: p.description || localMatch?.description || '',
+                  category: (p.category || localMatch?.category || 'frecuente') as any,
+                  selected: p.is_active ?? localMatch?.selected ?? true,
+                  grammages: finalGrammages,
+                };
+              });
+
+              // Conservar también papeles del catálogo base que aún no estén en la tabla de Supabase
+              const mergedPapers = [...dbPapers];
+              for (const baseP of inMemoryConfig.papers) {
+                const exists = mergedPapers.some(
+                  (dp) =>
+                    dp.code?.toUpperCase() === baseP.code?.toUpperCase() ||
+                    dp.name?.toLowerCase() === baseP.name?.toLowerCase()
+                );
+                if (!exists) {
+                  mergedPapers.push(baseP);
+                }
+              }
+
+              inMemoryConfig.papers = mergedPapers;
+            }
+
+            // Cargar servicios y acabados desde Supabase
+            const servicesData = servicesRes.data;
+            if (servicesData && servicesData.length > 0) {
+              inMemoryConfig.services = servicesData.map((s) => ({
+                id: s.id || `srv-${s.name}`,
+                name: s.name,
+                category: s.category as any,
+                rate_mode: (s.rate_mode as any) || 'General',
+                price: Number(s.price) || 0,
+                unit: s.unit || 'por pieza',
+                min_price: s.min_price ? Number(s.min_price) : undefined,
+                is_selected: s.is_selected ?? true,
+              }));
+            }
+
+            // Cargar zonas de envío desde Supabase
+            const shippingData = shippingRes.data;
+            if (shippingData && shippingData.length > 0) {
+              inMemoryConfig.shipping_zones = shippingData.map((z) => ({
+                id: z.id || `zone-${z.name}`,
+                name: z.name,
+                price: Number(z.price) || 0,
+                unit: z.unit || '/proyecto',
+              }));
+            }
+          } catch (err) {
+            console.warn('Usando configuración de taller local/fallback:', err);
+          }
+        }
+        saveCachedConfig(inMemoryConfig);
+        return inMemoryConfig;
+      } finally {
+        activeGetConfigPromise = null;
+      }
+    })();
+
+    return activeGetConfigPromise;
   },
 
   /**

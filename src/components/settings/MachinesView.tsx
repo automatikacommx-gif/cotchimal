@@ -23,7 +23,7 @@ interface MachinesViewProps {
 }
 
 export const MachinesView: React.FC<MachinesViewProps> = ({ onShowToast }) => {
-  const [machines, setMachines] = useState<WorkshopMachine[]>([]);
+  const [machines, setMachines] = useState<WorkshopMachine[]>(() => settingsService.getCachedConfig().machines);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isNewMachine, setIsNewMachine] = useState(true);
   const [editingMachine, setEditingMachine] = useState<WorkshopMachine | null>(null);
@@ -32,7 +32,15 @@ export const MachinesView: React.FC<MachinesViewProps> = ({ onShowToast }) => {
   const [showPresetsDropdown, setShowPresetsDropdown] = useState(false);
 
   useEffect(() => {
-    settingsService.getConfig().then((cfg) => setMachines(cfg.machines));
+    let isMounted = true;
+    settingsService.getConfig().then((cfg) => {
+      if (isMounted) {
+        setMachines(cfg.machines);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleDelete = async (id: string) => {
